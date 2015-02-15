@@ -12,6 +12,7 @@
 
 #define ROLE_DEVICE 1
 #define ROLE_WEBSEVER 0
+
 #define TYPE_CONNCET  3000
 #define TYPE_UPDATE  3001
 #define TYPE_PUSH  3002
@@ -28,6 +29,8 @@ static int cfd;
 int recbytes;
 char buffer[1024]={0};
 int command = 0;
+char* defualt_device_id = "testid";
+char* DeviceId;
 struct _thread {
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
@@ -105,29 +108,28 @@ int handler_read_msg(char *text)
 			}			
 			break;
 		case TYPE_UPDATE:
-
+			break;
+		case TYPE_PUSH:
 			break;
 	}
 	return 0;
 
 }
-void create_objects(char *p,int *len,char* device_id)
+void create_package(char *p,int *len,int type,int msg,char* data,int data_len,char* device_id)
 {
 	cJSON *root;
 	char *out;	/* declare a few. */
 	int size = 0;
-	/* Here we construct some JSON standards, from the JSON site. */
-	
-	/* Our "Video" datatype: */
+	/* Here we construct some JSON standards, from the JSON site. */	
+
 	root=cJSON_CreateObject();
 	cJSON_AddNumberToObject(root,"role",ROLE_DEVICE);
-	cJSON_AddNumberToObject(root,"type",TYPE_CONNCET);
-	cJSON_AddNumberToObject(root,"msg",MSG_AUTH_RESP);
+	cJSON_AddNumberToObject(root,"type",type);
+	cJSON_AddNumberToObject(root,"msg",msg);
 	cJSON_AddStringToObject(root,"id",device_id);
-	//cJSON_AddFalseToObject (root,"interlace");
-	//cJSON_AddNumberToObject(root,"frame rate",	24);
-	
+	if(data != NULL && data_len > 0){
 
+	}
 	out = cJSON_PrintUnformatted(root);
 	cJSON_Delete(root);
 	printf("%s\n",out);
@@ -148,7 +150,7 @@ int handler_write_msg(int cmd){
 	int len = sizeof(data);
 	switch(cmd){
 		case MSG_AUTH_REQ:
-			create_objects(data,&len,"1234");			
+			create_package(data,&len,TYPE_CONNCET,MSG_AUTH_RESP,NULL,0,DeviceId);			
 			break;
 	}
 	if(len > 0){
@@ -255,14 +257,21 @@ int start_input_thread(){
 	return ret;
 }
 //main...............................................................................
-int main()
-{
-
+int main(int argc,char* argv[])
+{	
 	log_dbg("Hello,welcome to client !\r\n");
+	DeviceId = defualt_device_id;
+	if(argc == 2) DeviceId = argv[1];
+	if(argc == 4){
+		char *port;
+		ServerIp = argv[1];
+		port = argv[2];
+		PortNum = atoi(port);
+		DeviceId = argv[3];
+	}
 	if(init_socket(&cfd) == -1 || cfd == -1)
 		goto failed;
 	log_dbg("connect ok !\r\n");
-
 	pthread_mutex_init(&write_thread.mutex,NULL);
 	pthread_cond_init(&write_thread.cond,NULL);
 
