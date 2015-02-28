@@ -279,12 +279,9 @@ int work(){
 	start_write_thread();
 	start_input_thread();
 
+	//挂起work主进程
 	pthread_join(read_thread.tid,read_thread.status);
-	log_dbg("read_thread return %d\r\n",*(int*)read_thread.status);
-	pthread_join(write_thread.tid,write_thread.status);
-	log_dbg("write_thread return %d\r\n",*(int*)write_thread.status);
-	pthread_join(input_thread.tid,input_thread.status);
-	log_dbg("input_thread return %d\r\n",*(int*)input_thread.status);
+
 failed:
 	close(cfd);
 	exit(0);
@@ -296,10 +293,8 @@ int main(int argc,char* argv[])
 	DeviceId = defualt_device_id;
 	if(argc == 2) DeviceId = argv[1];
 	if(argc == 4){
-		char *port;
 		ServerIp = argv[1];
-		port = argv[2];
-		PortNum = atoi(port);
+		PortNum = atoi(argv[2]);
 		DeviceId = argv[3];
 	}
 	while(1){
