@@ -1,8 +1,9 @@
 #include <stdlib.h>
-#include <sys/types.h>
 #include <stdio.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h> 
 #include <string.h>
 #include <pthread.h>
 #include <errno.h>
@@ -22,7 +23,7 @@
 #define MSG_AUTH_VEFY  4002
 #define MSG_AUTH_FIAL  4003
 
-static char *ServerIp = "127.0.0.1";
+static char *ServerIp = "114.215.158.131";
 static unsigned short PortNum = 6666;
 static int cfd;
 
@@ -183,6 +184,16 @@ int init_socket(int *socketfd){
 		log_err("connect fail !\r\n");
 		return -1;
 	}
+
+	int keepalive = 1;  
+    int keepidle = 5;  
+    int keepinterval = 3;  
+    int keepcount = 2;  
+    if(setsockopt(*socketfd,SOL_SOCKET,SO_KEEPALIVE,&keepalive,sizeof(keepalive))<0) return -3;  
+    if(setsockopt(*socketfd,SOL_TCP,TCP_KEEPIDLE,&keepidle,sizeof(keepidle))<0) return -4;  
+    if(setsockopt(*socketfd,SOL_TCP,TCP_KEEPINTVL,&keepinterval,sizeof(keepinterval))<0) return -5;  
+    if(setsockopt(*socketfd,SOL_TCP,TCP_KEEPCNT,&keepcount,sizeof(keepcount))<0) return -6;  
+	
 	return 0;
 }
 
@@ -269,7 +280,7 @@ int main(int argc,char* argv[])
 		PortNum = atoi(port);
 		DeviceId = argv[3];
 	}
-	if(init_socket(&cfd) == -1 || cfd == -1)
+	if(init_socket(&cfd) < 0 || cfd == -1)
 		goto failed;
 	log_dbg("connect ok !\r\n");
 	pthread_mutex_init(&write_thread.mutex,NULL);
@@ -280,8 +291,11 @@ int main(int argc,char* argv[])
 	start_input_thread();
 
 	pthread_join(read_thread.tid,read_thread.status);
+	log_dbg("read_thread return %d\r\n",*(int*)read_thread.status);
 	pthread_join(write_thread.tid,write_thread.status);
+	log_dbg("write_thread return %d\r\n",*(int*)write_thread.status);
 	pthread_join(input_thread.tid,input_thread.status);
+	log_dbg("input_thread return %d\r\n",*(int*)input_thread.status);
 failed:
 	close(cfd);
 	return 0;
