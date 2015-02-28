@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h> 
 #include <string.h>
@@ -267,19 +268,7 @@ int start_input_thread(){
 	if(ret == -1) log_err("can't create input thread(%s)\n",strerror(errno));	
 	return ret;
 }
-//main...............................................................................
-int main(int argc,char* argv[])
-{	
-	log_dbg("Hello,welcome to client !\r\n");
-	DeviceId = defualt_device_id;
-	if(argc == 2) DeviceId = argv[1];
-	if(argc == 4){
-		char *port;
-		ServerIp = argv[1];
-		port = argv[2];
-		PortNum = atoi(port);
-		DeviceId = argv[3];
-	}
+int work(){
 	if(init_socket(&cfd) < 0 || cfd == -1)
 		goto failed;
 	log_dbg("connect ok !\r\n");
@@ -298,5 +287,37 @@ int main(int argc,char* argv[])
 	log_dbg("input_thread return %d\r\n",*(int*)input_thread.status);
 failed:
 	close(cfd);
+	exit(0);
+}
+//作为守护进程daemon，检测任务进程是否退出，并重新创建任务进程，保证socket连接.....
+int main(int argc,char* argv[])
+{
+	log_dbg("Hello,welcome to socket device daemon !\r\n");
+	DeviceId = defualt_device_id;
+	if(argc == 2) DeviceId = argv[1];
+	if(argc == 4){
+		char *port;
+		ServerIp = argv[1];
+		port = argv[2];
+		PortNum = atoi(port);
+		DeviceId = argv[3];
+	}
+	while(1){
+		//创建工作进程
+		pid_t work_pid;
+		work_pid = fork();
+		if(work_pid < 0)
+			log_err("fork work progress fail\n");
+		else if(work_pid == 0){
+			log_dbg("here is work progress\n");
+			work();
+		}
+		else{
+			log_dbg("here is daemon\n");
+			wait(NULL);//工作进程异常退出后，唤醒守护进程
+			sleep(5);//5秒后重新创建连接进程
+		}
+	}
+
 	return 0;
 }
