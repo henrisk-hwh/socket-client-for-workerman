@@ -56,8 +56,8 @@ objs : $(OBJS)
 rebuild: veryclean everything
                
 clean :
-	find -name *.so | xargs rm -rf
-	find -name *.o | xargs rm -rf
+	find -name "*.so" | xargs rm -rf
+	find -name "*.o" | xargs rm -rf
    
 veryclean : clean
 	rm -fr $(TARGET)
