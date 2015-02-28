@@ -21,15 +21,21 @@
 # 源文件，自动找所有 .c 和 .cpp 文件，并将目标定义为同名 .o 文件
 SOURCE  := client.c cJSON/cJSON.c
 OBJS    := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(SOURCE)))
- 
+
 #target you can change test to what you want
 # 目标文件名，输入任意你想要的执行文件名
+ifdef ARM
+TARGET  := demo_arm
+CC	:= arm-none-linux-gnueabi-gcc
+else
 TARGET  := demo
- 
+CC      := gcc
+endif
+
 #compile and lib parameter
 # 编译参数
-CC      := gcc
-LIBS    := -lpthread -lm -lrt
+
+LIBS    := -lpthread -lm -lrt -static
 LDFLAGS:= 
 DEFINES:=
 INCLUDE:= -I. -I./cJSON
@@ -50,8 +56,8 @@ objs : $(OBJS)
 rebuild: veryclean everything
                
 clean :
-	rm -fr *.so
-	rm -fr *.o
+	find -name *.so | xargs rm -rf
+	find -name *.o | xargs rm -rf
    
 veryclean : clean
 	rm -fr $(TARGET)
