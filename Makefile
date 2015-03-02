@@ -26,7 +26,9 @@ OBJS    := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(SOURCE)))
 # 目标文件名，输入任意你想要的执行文件名
 ifdef ARM
 TARGET  := demo_arm
-CC	:= arm-none-linux-gnueabi-gcc
+#CC	:= arm-none-linux-gnueabi-gcc
+CC	:= arm-linux-gnueabihf-gcc
+DEFINES := -DANDROID_ENV
 else
 TARGET  := demo
 CC      := gcc
@@ -37,7 +39,6 @@ endif
 
 LIBS    := -lpthread -lm -lrt -static
 LDFLAGS:= 
-DEFINES:=
 INCLUDE:= -I. -I./cJSON
 CFLAGS  := -g -Wall -O3 $(DEFINES) $(INCLUDE)
 CXXFLAGS:= $(CFLAGS) -DHAVE_CONFIG_H

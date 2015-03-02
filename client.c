@@ -25,7 +25,7 @@
 #define MSG_AUTH_FIAL  4003
 
 static char *ServerIp = "114.215.158.131";
-static unsigned short PortNum = 6666;
+static unsigned short PortNum = 2345;
 static int cfd;
 
 int recbytes;
@@ -47,6 +47,42 @@ struct _thread input_thread;
 
 
 #include "cJSON.h"
+#ifdef ANDROID_ENV
+int android_system(const char * cmdstring)
+{
+        pid_t pid;
+        int status;
+        if(cmdstring == NULL){
+                return (1); //如果cmdstring为空，返回非零值，一般为1
+        }
+
+        if((pid = fork())<0){
+                status = -1; //fork失败，返回-1
+        }
+        else if(pid == 0){
+                execl("/system/bin/sh", "sh", "-c", cmdstring, (char *)0);
+                _exit(127); // exec执行失败返回127，注意exec只在失败时才返回现在的进程，成功的话现在的进程就不存在啦~~
+        }
+        else //父进程
+        {
+                while(waitpid(pid, &status, 0) < 0){
+                        if(errno != EINTR){
+                                status = -1; //如果waitpid被信号中断，则返回-1
+                                break;
+                        }
+                }
+        }
+        return status; //如果waitpid成功，则返回子进程的返回状态
+}
+#endif
+int system_shell(const char * cmdstring)
+{
+        #ifdef ANDROID_ENV
+        return android_system(cmdstring);
+        #else
+        return system(cmdstring);
+        #endif
+}
 
 int get_command(){
 	pthread_mutex_lock(&write_thread.mutex);
@@ -85,6 +121,42 @@ void doit(char *text)
 		free(out);
 	}
 }
+int device_on(){
+#ifdef ANDROID_ENV
+        int ret;
+        char *cmd = "echo 146:0:0:3264:2448# > data/camera/command";
+        ret = system_shell(cmd);
+        if(ret < 0){
+                log_err("%s ret is %d,%s\n",cmd,ret,strerror(errno));
+                return ret;
+        }
+        cmd = "/data/camera/hawkview &";
+        ret = system_shell(cmd);
+        if(ret < 0){
+                log_err("%s ret is %d,%s\n",cmd,ret,strerror(errno));
+                return ret;
+        }
+        return ret;
+#else
+        log_dbg("device on!");
+        return 0;
+#endif
+}
+int device_off()
+{
+#ifdef ANDROID_ENV
+        int ret;
+        char *cmd = "ps | busybox grep 'hawkview' | kill `busybox awk '{print $2}'`";
+        ret = system_shell(cmd);
+        if(ret < 0){
+                log_err("%s ret is %d,%s\n",cmd,ret,strerror(errno));                
+        }
+        return ret;
+#else
+        log_dbg("device off!");
+        return 0;
+#endif
+}
 int handler_read_msg(char *text)
 {	
 	cJSON *json;
@@ -98,9 +170,11 @@ int handler_read_msg(char *text)
 
 	int type = cJSON_GetObjectItem(json,"type")->valueint;
 	int msg = cJSON_GetObjectItem(json,"msg")->valueint;
-	cJSON_Delete(json);
+        char *data = "test";
+        
+	
 	log_dbg("type: %d\n",type);
-
+        
 	switch(type){
 		case TYPE_CONNCET:
 			if(msg == MSG_AUTH_REQ){
@@ -112,8 +186,19 @@ int handler_read_msg(char *text)
 		case TYPE_UPDATE:
 			break;
 		case TYPE_PUSH:
+			set_command_signal(100);
+                        data = cJSON_GetObjectItem(json,"data")->valuestring;
+                        log_dbg("data: %s\n",data);
 			break;
 	}
+        
+        if(!strcmp(data, "on")){
+                device_on();
+        }
+        if(!strcmp(data, "off")){
+                device_off();
+        }
+        cJSON_Delete(json);
 	return 0;
 
 }
@@ -154,6 +239,10 @@ int handler_write_msg(int cmd){
 		case MSG_AUTH_REQ:
 			create_package(data,&len,TYPE_CONNCET,MSG_AUTH_RESP,NULL,0,DeviceId);			
 			break;
+		case 100:
+			create_package(data,&len,TYPE_PUSH,100,NULL,0,DeviceId);			
+			break;
+
 	}
 	if(len > 0){
 		if(-1 == write(cfd,data,len)){
@@ -182,7 +271,7 @@ int init_socket(int *socketfd){
 	log_dbg("s_addr = %#x ,port : %#x\r\n",s_add.sin_addr.s_addr,s_add.sin_port);
 
 	if(-1 == connect(*socketfd,(struct sockaddr *)(&s_add), sizeof(struct sockaddr))){
-		log_err("connect fail !\r\n");
+		log_err("connect fail! %s.\r\n",strerror(errno));
 		return -1;
 	}
 
