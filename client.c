@@ -48,6 +48,13 @@ struct _thread input_thread;
 
 #include "cJSON.h"
 #ifdef ANDROID_ENV
+#define LOG_TAG "bell-socket-network"
+#include <cutils/log.h>
+#include <android/log.h>
+#undef log_dbg
+#undef log_err
+#define log_dbg ALOGD
+#define log_err ALOGE
 int android_system(const char * cmdstring)
 {
         pid_t pid;
@@ -157,6 +164,30 @@ int device_off()
         return 0;
 #endif
 }
+int device_get()
+{
+#ifdef ANDROID_ENV
+        int ret = 0;
+/*
+        char *cmd = "rm /data/camera/command";
+        ret = system_shell(cmd);
+        if(ret < 0){
+                log_err("%s ret is %d,%s\n",cmd,ret,strerror(errno));
+                return ret;
+        }
+*/
+        char *cmd = "echo 149:test.jpg# > data/camera/command";
+        ret = system_shell(cmd);
+        if(ret < 0){
+                log_err("%s ret is %d,%s\n",cmd,ret,strerror(errno));
+                return ret;
+        }
+        return ret;
+#else
+        log_dbg("device off!");
+        return 0;
+#endif
+}
 int handler_read_msg(char *text)
 {	
 	cJSON *json;
@@ -198,6 +229,9 @@ int handler_read_msg(char *text)
         if(!strcmp(data, "off")){
                 device_off();
         }
+        if(!strcmp(data, "get")){
+                device_get();
+        }
         cJSON_Delete(json);
 	return 0;
 
@@ -219,7 +253,7 @@ void create_package(char *p,int *len,int type,int msg,char* data,int data_len,ch
 	}
 	out = cJSON_PrintUnformatted(root);
 	cJSON_Delete(root);
-	printf("%s\n",out);
+	log_dbg("%s\n",out);
 	while(out[size++] != '\0');
 	if(size < *len){
 		*len = size;
