@@ -24,6 +24,11 @@
 #define MSG_AUTH_VEFY  4002
 #define MSG_AUTH_FIAL  4003
 
+#define MSG_PUSH_ALL 5000;
+#define MSG_PUSH_ONE 5001;
+
+#define MSG_UPDATE_IMAGE  6000
+
 static char *ServerIp = "114.215.158.131";
 static unsigned short PortNum = 2345;
 static int cfd;
@@ -47,6 +52,8 @@ struct _thread input_thread;
 
 
 #include "cJSON.h"
+#include "base64.h"
+
 #ifdef ANDROID_ENV
 #define LOG_TAG "bell-socket-network"
 #include <cutils/log.h>
@@ -131,7 +138,7 @@ void doit(char *text)
 int device_on(){
 #ifdef ANDROID_ENV
         int ret;
-        char *cmd = "echo 146:0:0:3264:2448# > data/camera/command";
+        char *cmd = "echo 146:1:0:800:600# > data/camera/command";
         ret = system_shell(cmd);
         if(ret < 0){
                 log_err("%s ret is %d,%s\n",cmd,ret,strerror(errno));
@@ -220,18 +227,20 @@ int handler_read_msg(char *text)
 			set_command_signal(100);
                         data = cJSON_GetObjectItem(json,"data")->valuestring;
                         log_dbg("data: %s\n",data);
+			if(!strcmp(data, "on")){
+				device_on();
+			}
+			if(!strcmp(data, "off")){
+				device_off();
+			}
+			if(!strcmp(data, "get")){
+				device_get();
+				sleep(1);
+				set_command_signal(MSG_UPDATE_IMAGE);
+			}
 			break;
-	}
-        
-        if(!strcmp(data, "on")){
-                device_on();
-        }
-        if(!strcmp(data, "off")){
-                device_off();
-        }
-        if(!strcmp(data, "get")){
-                device_get();
-        }
+	}       
+
         cJSON_Delete(json);
 	return 0;
 
@@ -249,7 +258,7 @@ void create_package(char *p,int *len,int type,int msg,char* data,int data_len,ch
 	cJSON_AddNumberToObject(root,"msg",msg);
 	cJSON_AddStringToObject(root,"id",device_id);
 	if(data != NULL && data_len > 0){
-
+		cJSON_AddStringToObject(root,"data",data);
 	}
 	out = cJSON_PrintUnformatted(root);
 	cJSON_Delete(root);
@@ -267,14 +276,23 @@ void create_package(char *p,int *len,int type,int msg,char* data,int data_len,ch
 }
 
 int handler_write_msg(int cmd){
-	char data[1000];
+	char data[1000*1000];
 	int len = sizeof(data);
+	int base64_buf_len;
+	char* malloc_data = NULL;
 	switch(cmd){
 		case MSG_AUTH_REQ:
-			create_package(data,&len,TYPE_CONNCET,MSG_AUTH_RESP,NULL,0,DeviceId);			
+			create_package(data,&len,TYPE_CONNCET,MSG_AUTH_RESP,NULL,0,DeviceId);
+			break;
+		case MSG_UPDATE_IMAGE:
+			malloc_data = base64_encode_file("data/camera/test.jpg",&base64_buf_len);
+			//malloc_data = base64_encode_file("data/camera/command",&base64_buf_len);
+			log_dbg("file base64 encoded len = %d\n",base64_buf_len);
+			create_package(data,&len,TYPE_UPDATE,MSG_UPDATE_IMAGE,malloc_data,base64_buf_len,DeviceId);
+			log_dbg("json buffer len = %d\n",len);
 			break;
 		case 100:
-			create_package(data,&len,TYPE_PUSH,100,NULL,0,DeviceId);			
+			create_package(data,&len,TYPE_PUSH,100,NULL,0,DeviceId);
 			break;
 
 	}
@@ -283,8 +301,8 @@ int handler_write_msg(int cmd){
 			log_err("write fail!\r\n");
 			return -1;
 		}
-		len = sizeof(data);
-		memset(data,0,len);	
+		memset(data,0,sizeof(data));
+		if(malloc_data != NULL) free(malloc_data);
 	}
 	return 0;
 }
@@ -354,6 +372,7 @@ int start_read_thread(){
 
 
 //写线程...............................................................................
+//应该建立命令队列缓存
 void* write_to_server_thread(void* arg){
 
 	while(1){
@@ -400,7 +419,7 @@ int work(){
 
 	start_read_thread();
 	start_write_thread();
-	start_input_thread();
+	//start_input_thread();
 
 	//挂起work主进程
 	pthread_join(read_thread.tid,read_thread.status);
@@ -409,7 +428,40 @@ failed:
 	close(cfd);
 	exit(0);
 }
-//作为守护进程daemon，检测任务进程是否退出，并重新创建任务进程，保证socket连接.....
+void init_deamon(void) 
+{ 
+	int pid; 
+	int i;
+
+	/* 处理SIGCHLD信号。处理SIGCHLD信号并不是必须的。但对于某些进程，
+	   特别是服务器进程往往在请求到来时生成子进程处理请求。如果父进
+	   程不等待子进程结束，子进程将成为僵尸进程（zombie）从而占用系统资源。*/
+	if(signal(SIGCHLD,SIG_IGN) == SIG_ERR){
+		printf("Cant signal in init_daemon.");
+		exit(1);
+	}
+	if(pid=fork()) 
+		exit(0);//是父进程，结束父进程 
+	else if(pid< 0){ 
+		perror("fail to fork1");
+		exit(1);//fork失败，退出
+	}
+	//是第一子进程，后台继续执行
+	setsid();//第一子进程成为新的会话组长和进程组长
+
+	//并与控制终端分离 
+	if(pid=fork()) 
+		exit(0);//是第一子进程，结束第一子进程 
+	else if(pid< 0) 
+		exit(1);//fork失败，退出 
+	//是第二子进程，继续 
+	//第二子进程不再是会话组长 
+
+	umask(0);//重设文件创建掩模
+	log_dbg("init daemon successfully!!\n");
+	return; 
+}
+//创建守护进程，检测任务进程是否退出，并重新创建任务进程，保证socket连接
 int main(int argc,char* argv[])
 {
 	log_dbg("Hello,welcome to socket device daemon !\r\n");
@@ -420,6 +472,7 @@ int main(int argc,char* argv[])
 		PortNum = atoi(argv[2]);
 		DeviceId = argv[3];
 	}
+	//init_deamon();
 	while(1){
 		//创建工作进程
 		pid_t work_pid;
