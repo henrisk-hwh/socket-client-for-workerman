@@ -24,8 +24,8 @@
 #define MSG_AUTH_VEFY  4002
 #define MSG_AUTH_FIAL  4003
 
-#define MSG_PUSH_ALL 5000;
-#define MSG_PUSH_ONE 5001;
+#define MSG_PUSH_ALL 5000
+#define MSG_PUSH_ONE 5001
 
 #define MSG_UPDATE_IMAGE  6000
 
@@ -36,8 +36,13 @@ static int cfd;
 int recbytes;
 char buffer[1024]={0};
 int command = 0;
-char* defualt_device_id = "testid";
+char* defualt_device_id = "0123";
 char* DeviceId;
+enum device_status
+{
+	ON = 1,
+	OFF = 0,
+} status;
 struct _thread {
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
@@ -135,10 +140,14 @@ void doit(char *text)
 		free(out);
 	}
 }
-int device_on(){
+int device_on(int face){
 #ifdef ANDROID_ENV
-        int ret;
-        char *cmd = "echo 146:1:0:800:600# > data/camera/command";
+        int ret;char *cmd;
+	device_off();
+	if(face == 1)
+		cmd = "echo 146:1:0:800:600# > data/camera/command";
+	else
+		cmd = "echo 146:0:0:3264:2448# > data/camera/command";
         ret = system_shell(cmd);
         if(ret < 0){
                 log_err("%s ret is %d,%s\n",cmd,ret,strerror(errno));
@@ -156,6 +165,7 @@ int device_on(){
         return 0;
 #endif
 }
+
 int device_off()
 {
 #ifdef ANDROID_ENV
@@ -219,16 +229,24 @@ int handler_read_msg(char *text)
 				set_command_signal(MSG_AUTH_REQ);
 			}else if (msg == MSG_AUTH_VEFY){
 				log_dbg("devide connected to server!!\n");
-			}			
+			}
 			break;
 		case TYPE_UPDATE:
 			break;
 		case TYPE_PUSH:
-			set_command_signal(100);
-                        data = cJSON_GetObjectItem(json,"data")->valuestring;
-                        log_dbg("data: %s\n",data);
+			if(msg == MSG_PUSH_ONE){
+
+			}else if(msg == MSG_PUSH_ALL){
+				set_command_signal(100);
+			}
+
+			data = cJSON_GetObjectItem(json,"data")->valuestring;
+			log_dbg("data: %s\n",data);
 			if(!strcmp(data, "on")){
-				device_on();
+				device_on(0);
+			}
+			if(!strcmp(data, "onn")){
+				device_on(1);
 			}
 			if(!strcmp(data, "off")){
 				device_off();
@@ -486,6 +504,7 @@ int main(int argc,char* argv[])
 		else{
 			log_dbg("here is daemon\n");
 			wait(NULL);//工作进程异常退出后，唤醒守护进程
+			device_off();
 			sleep(5);//5秒后重新创建连接进程
 		}
 	}
